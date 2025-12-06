@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Trip Planner</title>
+    <meta name="theme-color" content="#f8fafc">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        /* Custom Scrollbar for Light Mode */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Leaflet Light Mode Overrides */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        }
+        /* Remove blue highlighting on mobile tap */
+        * { -webkit-tap-highlight-color: transparent; }
+        
+        /* Icon container fix */
+        .custom-div-icon {
+            background: transparent;
+            border: none;
+        }
+    </style>
+
+    <!-- PWA Injection -->
+    <script>
+        const iconUrl = "https://cdn-icons-png.flaticon.com/512/3125/3125848.png";
+        const manifest = {
+            "name": "Trip Planner",
+            "short_name": "TripPlan",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#f8fafc",
+            "theme_color": "#f8fafc",
+            "orientation": "portrait-primary",
+            "icons": [{ "src": iconUrl, "sizes": "512x512", "type": "image/png" }]
+        };
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'}));
+        document.head.appendChild(link);
+        
+        const appleLink = document.createElement('link');
+        appleLink.rel = 'apple-touch-icon';
+        appleLink.href = iconUrl;
+        document.head.appendChild(appleLink);
+    </script>
+
+    <!-- React & Dependencies -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Pinning Lucide to a specific version to ensure data structure consistency -->
+    <script src="https://unpkg.com/lucide@0.263.1/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- ROBUST ICON CREATOR ---
+        const CreateIcon = (iconName) => {
+            return ({ size = 24, className = "", ...props }) => {
+                if (!window.lucide || !window.lucide.icons) return null;
+                const iconData = window.lucide.icons[iconName];
+                if (!iconData || !Array.isArray(iconData)) return null;
+                const [tag, attrs, children] = iconData;
+                return (
+                    <svg {...attrs} width={size} height={size} className={`lucide lucide-${iconName.toLowerCase()} ${className}`} {...props}>
+                        {Array.isArray(children) && children.map(([childTag, childAttrs], i) => 
+                            React.createElement(childTag, { ...childAttrs, key: i })
+                        )}
+                    </svg>
+                );
+            };
+        };
+
+        const MapIcon = CreateIcon('Map');
+        const Calendar = CreateIcon('Calendar');
+        const Plus = CreateIcon('Plus');
+        const Trash2 = CreateIcon('Trash2');
+        const ExternalLink = CreateIcon('ExternalLink');
+        const Train = CreateIcon('Train');
+        const Car = CreateIcon('Car'); // Added Car Icon
+        const Coffee = CreateIcon('Coffee');
+        const Camera = CreateIcon('Camera');
+        const Landmark = CreateIcon('Landmark');
+        const Utensils = CreateIcon('Utensils');
+        const MapPin = CreateIcon('MapPin');
+        const Download = CreateIcon('Download');
+        const Upload = CreateIcon('Upload');
+        const Edit2 = CreateIcon('Edit2');
+        const X = CreateIcon('X');
+        const Clock = CreateIcon('Clock');
+        const Navigation = CreateIcon('Navigation');
+        const Share2 = CreateIcon('Share2');
+        const LayoutGrid = CreateIcon('LayoutGrid');
+        const ChevronRight = CreateIcon('ChevronRight');
+        const Timer = CreateIcon('Timer');
+        const StickyNote = CreateIcon('StickyNote');
+        const Star = CreateIcon('Star');
+        const Search = CreateIcon('Search');
+        const Loader2 = CreateIcon('Loader2');
+        const AlertTriangle = CreateIcon('AlertTriangle');
+        const Footprints = CreateIcon('Footprints');
+        const BedDouble = CreateIcon('BedDouble');
+        const Home = CreateIcon('Home');
+        const FileText = CreateIcon('FileText');
+        const Copy = CreateIcon('Copy');
+        const GripVertical = CreateIcon('GripVertical');
+        const ClipboardCopy = CreateIcon('ClipboardCopy');
+        const Globe = CreateIcon('Globe');
+        const CheckCircle2 = CreateIcon('CheckCircle2');
+        const AlertCircle = CreateIcon('AlertCircle');
+
+
+        // --- STATIC DATA ---
+        const TUBE_KNOWLEDGE = [
+            { keywords: ['tower', 'bridge', 'monument'], lines: ['District', 'Circle'], color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+            { keywords: ['museum', 'natural', 'victoria', 'albert'], lines: ['Piccadilly', 'District'], color: 'bg-blue-100 text-blue-800 border-blue-200' },
+            { keywords: ['shoreditch', 'brick', 'spitalfields'], lines: ['Overground', 'Northern'], color: 'bg-orange-100 text-orange-800 border-orange-200' },
+            { keywords: ['buckingham', 'green', 'park'], lines: ['Victoria', 'Jubilee'], color: 'bg-cyan-100 text-cyan-800 border-cyan-200' },
+            { keywords: ['borough', 'market', 'shard'], lines: ['Jubilee', 'Northern'], color: 'bg-gray-100 text-gray-800 border-gray-200' },
+            { keywords: ['westminster', 'eye', 'dungeon'], lines: ['Jubilee', 'District'], color: 'bg-gray-100 text-gray-800 border-gray-200' },
+            { keywords: ['soho', 'covent', 'theatre', 'chinatown'], lines: ['Piccadilly', 'Northern'], color: 'bg-blue-100 text-blue-800 border-blue-200' },
+            { keywords: ['camden'], lines: ['Northern'], color: 'bg-gray-900 text-white border-gray-700' },
+            { keywords: ['notting', 'portobello'], lines: ['Central', 'District'], color: 'bg-red-100 text-red-800 border-red-200' },
+            { keywords: ['wimbledon'], lines: ['District'], color: 'bg-green-100 text-green-800 border-green-200' },
+        ];
+
+        const predictTubeLines = (title, address) => {
+            const text = (title + " " + (address || "")).toLowerCase();
+            const match = TUBE_KNOWLEDGE.find(k => k.keywords.some(word => text.includes(word)));
+            return match ? match : null;
+        };
+
+        // --- HELPERS ---
+        const ensureProtocol = (url) => {
+            if (!url) return '';
+            if (!/^https?:\/\//i.test(url)) {
+                return `https://${url}`;
+            }
+            return url;
+        };
+
+        const getLegUrl = (originItem, destItem, mode = 'transit') => {
+            try {
+                if (!originItem || !destItem) return '#';
+                const getPoint = (item) => {
+                    if (item.lat && item.lon) return `${item.lat},${item.lon}`;
+                    if (item.location && item.location.lat && item.location.lon) {
+                        return `${item.location.lat},${item.location.lon}`;
+                    }
+                    return encodeURIComponent(item.title || item.name || '');
+                };
+                const origin = getPoint(originItem);
+                const dest = getPoint(destItem);
+                return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=${mode}`;
+            } catch (e) {
+                return 'https://maps.google.com';
+            }
+        };
+
+        const parseLocalDate = (dateStr) => {
+            if (!dateStr) return new Date();
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day); 
+        };
+
+        const getDaysArray = (start, end) => {
+            const arr = [];
+            const dt = parseLocalDate(start);
+            const endDt = parseLocalDate(end);
+            if (isNaN(dt.getTime()) || isNaN(endDt.getTime())) return [];
+            while (dt <= endDt) {
+                arr.push(new Date(dt));
+                dt.setDate(dt.getDate() + 1);
+            }
+            return arr;
+        };
+
+        const calculateDistance = (lat1, lon1, lat2, lon2) => {
+            if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+            const R = 6371; 
+            const dLat = (lat2 - lat1) * (Math.PI/180);
+            const dLon = (lon2 - lon1) * (Math.PI/180);
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * (Math.PI/180)) * Math.cos(lat2 * (Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2); 
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            return R * c;
+        };
+
+        const formatAddress = (location) => {
+            if (!location) return '';
+            if (location.addressObj) {
+                const { city, town, village, state, country } = location.addressObj;
+                const cityText = city || town || village || state;
+                return [cityText, country].filter(Boolean).join(', ');
+            }
+            return location.address.split(',').slice(1, 3).join(', ');
+        };
+
+        // --- CATEGORIES (Light Mode Colors) ---
+        const CATEGORIES = [
+            { label: 'Sightseeing', icon: Camera, color: 'bg-blue-100 text-blue-600 border-blue-200' },
+            { label: 'Food & Drink', icon: Utensils, color: 'bg-orange-100 text-orange-600 border-orange-200' },
+            { label: 'History', icon: Landmark, color: 'bg-amber-100 text-amber-600 border-amber-200' },
+            { label: 'Activity', icon: MapIcon, color: 'bg-emerald-100 text-emerald-600 border-emerald-200' },
+            { label: 'Relax', icon: Coffee, color: 'bg-purple-100 text-purple-600 border-purple-200' },
+        ];
+
+        // --- LOCAL STORAGE KEY ---
+        const STORAGE_KEY = 'trip_planner_local_v6';
+
+        const INITIAL_DATA = {
+            tripName: "Summer Vacation",
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            accommodation: null,
+            transportMode: 'transit', 
+            ideas: [
+                { 
+                  id: 1, 
+                  title: "Welcome to your Planner", 
+                  category: "Relax", 
+                  notes: "Drag me to a day to get started!", 
+                  status: "must-do", 
+                  day: null, 
+                  startTime: "", 
+                  duration: "60",
+                  order: 0
+                },
+            ],
+        };
+
+        // --- CSV CONSTANTS & PARSER ---
+        const CSV_HEADERS = ["Title", "Category", "Status", "Day", "StartTime", "Duration", "Notes", "Link", "LocationName", "LocationAddress", "Latitude", "Longitude"];
+
+        const escapeCSV = (str) => {
+            if (!str) return '';
+            const stringVal = String(str);
+            if (stringVal.includes(',') || stringVal.includes('"') || stringVal.includes('\n')) {
+                return `"${stringVal.replace(/"/g, '""')}"`;
+            }
+            return stringVal;
+        };
+
+        const parseCSV = (text) => {
+            const lines = text.trim().split(/\r?\n/);
+            if (lines.length < 2) return [];
+            
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+            const results = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line.trim()) continue;
+                
+                const values = [];
+                let match;
+                const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^",]*))/g;
+                
+                while ((match = regex.exec(line)) !== null) {
+                    let val = match[1] ? match[1].replace(/""/g, '"') : match[2];
+                    if (val === undefined) val = ''; 
+                    values.push(val);
+                }
+                
+                const entry = {};
+                headers.forEach((header, index) => {
+                    if (index < values.length) {
+                        entry[header] = values[index];
+                    }
+                });
+                results.push(entry);
+            }
+            return results;
+        };
+
+        // --- COMPONENTS ---
+
+        const MapView = ({ ideas, accommodation }) => {
+            const mapRef = useRef(null);
+            const mapInstance = useRef(null);
+            const markersRef = useRef([]);
+
+            useEffect(() => {
+                if (!mapRef.current || !window.L) return;
+                
+                if (!mapInstance.current) {
+                    const defaultCoords = [51.505, -0.09];
+                    mapInstance.current = window.L.map(mapRef.current).setView(defaultCoords, 13);
+                    
+                    // Light Mode Tiles (Carto Voyager)
+                    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                        attribution: '&copy; OpenStreetMap &copy; CARTO',
+                        subdomains: 'abcd',
+                        maxZoom: 20
+                    }).addTo(mapInstance.current);
+                }
+
+                return () => {
+                    if (mapInstance.current) {
+                        mapInstance.current.remove();
+                        mapInstance.current = null;
+                        markersRef.current = [];
+                    }
+                };
+            }, []);
+
+            useEffect(() => {
+                const map = mapInstance.current;
+                if (!map || !window.L) return;
+
+                // Safely remove existing markers
+                markersRef.current.forEach(marker => map.removeLayer(marker));
+                markersRef.current = [];
+
+                try {
+                    const createIcon = (color, iconHtml) => {
+                        return window.L.divIcon({
+                            className: 'custom-div-icon',
+                            html: `<div style="background-color: ${color}; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">${iconHtml}</div>`,
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 15],
+                            popupAnchor: [0, -15]
+                        });
+                    };
+
+                    if (accommodation && accommodation.lat && accommodation.lon) {
+                        const homeIcon = createIcon('#10b981', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>');
+                        const marker = window.L.marker([accommodation.lat, accommodation.lon], { icon: homeIcon })
+                            .addTo(map)
+                            .bindPopup(`<b>🏠 ${accommodation.name}</b><br><span style="font-size:10px; color:#666">Home Base</span>`);
+                        markersRef.current.push(marker);
+                    }
+
+                    ideas.forEach(idea => {
+                        if (idea.location && !isNaN(parseFloat(idea.location.lat)) && !isNaN(parseFloat(idea.location.lon))) {
+                            const color = idea.day ? '#3b82f6' : '#9ca3af'; 
+                            const content = idea.day ? `<span style="color:white; font-weight:bold; font-size:12px">${idea.day}</span>` : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg>`;
+                            const icon = createIcon(color, content);
+                            const marker = window.L.marker([idea.location.lat, idea.location.lon], { icon: icon })
+                                .addTo(map)
+                                .bindPopup(`
+                                    <div style="min-width:150px; color: #333;">
+                                    <strong style="font-size:14px">${idea.title}</strong>
+                                    <br>
+                                    <span style="font-size:11px; text-transform:uppercase; color:#666; font-weight:bold">${idea.category}</span>
+                                    </div>
+                                `);
+                            markersRef.current.push(marker);
+                        }
+                    });
+
+                    if (markersRef.current.length > 0) {
+                        const group = window.L.featureGroup(markersRef.current);
+                        map.fitBounds(group.getBounds().pad(0.2));
+                    }
+                } catch (e) {
+                    console.error("Error updating map markers:", e);
+                }
+            }, [ideas, accommodation]);
+
+            return <div ref={mapRef} className="w-full h-full min-h-[500px] bg-slate-50 z-0" />;
+        };
+
+        const IdeaCard = ({ item, compact = false, onEdit, onDelete, onDragStart, onDrop }) => {
+            const catConfig = CATEGORIES.find(c => c.label === item.category) || { icon: MapPin, color: 'bg-slate-100 text-slate-500 border-slate-200' };
+            const CatIcon = catConfig.icon;
+            const tubeInfo = predictTubeLines(item.title, item.location?.address);
+
+            const handleDragStart = (e) => {
+                e.dataTransfer.setData("text/plain", item.id);
+                e.dataTransfer.effectAllowed = "move";
+                if (onDragStart) onDragStart(item.id);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault(); 
+                e.dataTransfer.dropEffect = "move";
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                e.stopPropagation(); 
+                const droppedItemId = e.dataTransfer.getData("text/plain");
+                if (onDrop) onDrop(droppedItemId, item.id); 
+            };
+
+            return (
+                <div 
+                draggable
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                className={`bg-white border border-slate-200 rounded-xl shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group relative cursor-pointer overflow-hidden ${compact ? 'mb-0' : 'mb-3'}`}
+                onClick={(e) => onEdit(e, item)}
+                >
+                 {/* Delete Button - FIXED: High Contrast & Always Visible */}
+                 <button 
+                    onClick={(e) => onDelete(e, item.id)} 
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="absolute top-2 right-2 text-slate-400 hover:text-red-500 p-2 z-30 bg-white/80 rounded-full border border-slate-200 shadow-sm hover:bg-red-50 transition-all"
+                    title="Delete"
+                >
+                    <Trash2 size={16} />
+                </button>
+
+                <div className="p-4 flex gap-4 items-start relative">
+                    <div className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-400 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-1">
+                        <GripVertical size={16} />
+                    </div>
+
+                    <div className={`w-12 h-12 rounded-full ${catConfig.color} flex items-center justify-center shrink-0 border ml-2`}>
+                        <CatIcon size={20} />
+                    </div>
+
+                    <div className="flex-1 min-w-0 pr-8">
+                        <div className="flex justify-between items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-slate-900 text-base leading-tight truncate">{item.title}</h3>
+                            
+                            {item.location && (
+                                <div className="flex items-center gap-1 mt-1 text-xs text-slate-500 truncate">
+                                <MapPin size={10} className="text-emerald-600 shrink-0" />
+                                <span className="truncate">
+                                    {item.location.name}, <span className="opacity-75">{item.location.shortAddress || formatAddress(item.location)}</span>
+                                </span>
+                                </div>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{item.category}</span>
+                                {item.startTime && (
+                                <span className="text-xs font-mono font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                    {item.startTime}
+                                </span>
+                                )}
+                            </div>
+                            
+                            {tubeInfo && (
+                                <div className="mt-2">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${tubeInfo.color} inline-flex items-center gap-1`}>
+                                    <Train size={10} />
+                                    {tubeInfo.lines.join(' / ')}
+                                </span>
+                                </div>
+                            )}
+                            </div>
+                        </div>
+
+                        {item.notes && (
+                            <div className="mt-3 flex gap-2 items-start">
+                            <StickyNote size={12} className="text-slate-400 mt-0.5 shrink-0" />
+                            <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">
+                                {item.notes}
+                            </p>
+                            </div>
+                        )}
+
+                        <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide whitespace-nowrap border flex items-center gap-1 ${item.status === 'must-do' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                                {item.status === 'must-do' && <Star size={8} fill="currentColor" />}
+                                {item.status === 'must-do' ? 'Must Do' : 'If Time'}
+                            </span>
+
+                            {item.link && (
+                                <a 
+                                href={ensureProtocol(item.link)} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                onClick={e => e.stopPropagation()} 
+                                onMouseDown={e => e.stopPropagation()} 
+                                className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline font-medium ml-1 z-20 relative"
+                                >
+                                <ExternalLink size={12} /> Link
+                                </a>
+                            )}
+                            </div>
+                            {!compact && (
+                                <div className="text-xs font-medium text-slate-400 whitespace-nowrap">
+                                {item.day ? `Day ${item.day}` : "Unscheduled"}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                </div>
+            );
+        };
+
+        const TripPlanner = () => {
+            const [activeTab, setActiveTab] = useState('ideas');
+            const [tripData, setTripData] = useState(null);
+            const [saveStatus, setSaveStatus] = useState('saved'); 
+            
+            // --- LOCAL STORAGE PERSISTENCE ---
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY);
+                    if (saved) {
+                        setTripData(JSON.parse(saved));
+                    } else {
+                        setTripData(INITIAL_DATA);
+                    }
+                } catch (e) {
+                    setTripData(INITIAL_DATA);
+                }
+            }, []);
+
+            const updateTripData = (newData) => {
+                setTripData(newData);
+                setSaveStatus('saving');
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+                    setTimeout(() => setSaveStatus('saved'), 500);
+                } catch (e) {
+                    setSaveStatus('error');
+                }
+            };
+
+            // --- STATE ---
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isHotelModalOpen, setIsHotelModalOpen] = useState(false);
+            const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [routeModal, setRouteModal] = useState(null);
+            const [isSearching, setIsSearching] = useState(false);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [searchResults, setSearchResults] = useState([]);
+            const [csvText, setCsvText] = useState('');
+            const [formData, setFormData] = useState({ 
+                title: '', category: 'Sightseeing', notes: '', status: 'must-do', link: '', startTime: '', duration: '60', day: '', location: null 
+            });
+
+            // --- HANDLERS & LOGIC ---
+            const handleDateChange = (field, value) => {
+                const newData = { ...tripData, [field]: value };
+                const start = parseLocalDate(newData.startDate);
+                const end = parseLocalDate(newData.endDate);
+                if (field === 'startDate' && start > end) newData.endDate = value; 
+                else if (field === 'endDate' && end < start) newData.startDate = value; 
+                updateTripData(newData);
+            };
+
+            const tripDays = tripData ? getDaysArray(tripData.startDate, tripData.endDate) : [];
+            const unscheduledItems = tripData?.ideas.filter(i => !i.day) || [];
+
+            const handleOpenAdd = () => {
+                setEditingId(null);
+                setFormData({ title: '', category: 'Sightseeing', notes: '', status: 'must-do', link: '', startTime: '', duration: '60', day: '', location: null });
+                setSearchQuery('');
+                setSearchResults([]);
+                setIsModalOpen(true);
+            };
+
+            const handleOpenEdit = (e, item) => {
+                if (e) e.stopPropagation(); 
+                setEditingId(item.id);
+                setFormData({ 
+                    title: item.title || '', category: item.category || 'Sightseeing', notes: item.notes || '', 
+                    status: item.status || 'must-do', link: item.link || '', startTime: item.startTime || '', 
+                    duration: item.duration || '60', day: item.day || '', location: item.location || null
+                });
+                setSearchQuery('');
+                setSearchResults([]);
+                setIsModalOpen(true);
+            };
+
+            const handleSaveItem = () => {
+                if (!formData.title) return;
+                const dayValue = formData.day ? parseInt(formData.day) : null;
+                const finalItemData = { ...formData, day: dayValue };
+                let newIdeas;
+                if (editingId) {
+                    newIdeas = tripData.ideas.map(i => i.id === editingId ? { ...finalItemData, id: editingId } : i);
+                } else {
+                    const newItem = { id: Date.now(), order: tripData.ideas.length, ...finalItemData }; 
+                    newIdeas = [...tripData.ideas, newItem];
+                }
+                updateTripData({ ...tripData, ideas: newIdeas });
+                setIsModalOpen(false);
+            };
+
+            const handleDelete = (e, id) => {
+                if (e) e.stopPropagation(); 
+                updateTripData({ ...tripData, ideas: tripData.ideas.filter(i => String(i.id) !== String(id)) });
+            };
+
+            const handleSearchLocation = async () => {
+                if (!searchQuery || searchQuery.length < 3) return;
+                setIsSearching(true);
+                setSearchResults([]);
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&addressdetails=1&limit=5`);
+                    const data = await response.json();
+                    setSearchResults(data);
+                } catch (error) { console.error(error); } 
+                finally { setIsSearching(false); }
+            };
+
+            const selectLocation = (result) => {
+                const { city, town, village, state, country } = result.address;
+                const cityText = city || town || village || state || '';
+                const shortAddress = [cityText, country].filter(Boolean).join(', ');
+                const placeName = result.name || result.display_name.split(',')[0];
+                const locationObj = { name: placeName, lat: result.lat, lon: result.lon, address: result.display_name, shortAddress: shortAddress, addressObj: result.address };
+
+                if (isHotelModalOpen) {
+                    updateTripData({ ...tripData, accommodation: locationObj });
+                    setIsHotelModalOpen(false);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                } else {
+                    setFormData(prev => ({ ...prev, location: locationObj }));
+                    setSearchResults([]); 
+                    setSearchQuery(''); 
+                }
+            };
+
+            const prepareRoutePreview = (dayIndex, displayDate, e) => {
+                if(e) e.stopPropagation();
+                try {
+                    const dayId = dayIndex + 1; 
+                    const dayItems = tripData.ideas.filter(i => i.day === dayId);
+                    if (dayItems.length === 0) return;
+                    const getPoint = (loc) => {
+                        if (loc && loc.lat && loc.lon) return `${loc.lat},${loc.lon}`;
+                        return encodeURIComponent(loc?.name || '');
+                    };
+                    let startPoint;
+                    if (tripData.accommodation) startPoint = getPoint(tripData.accommodation);
+                    else if (dayItems[0]) startPoint = getPoint(dayItems[0].location || { name: dayItems[0].title });
+                    else return;
+                    const lastItem = dayItems[dayItems.length - 1];
+                    if (!lastItem) return; 
+                    const endPoint = getPoint(lastItem.location || { name: lastItem.title });
+                    
+                    const mode = tripData.transportMode || 'transit'; // Use mode
+                    
+                    let googleUrl = `https://www.google.com/maps/dir/?api=1&origin=${startPoint}&destination=${endPoint}&travelmode=${mode}`;
+                    
+                    // Add Waypoints only if available
+                    let waypoints = [];
+                    if (tripData.accommodation) {
+                        const stops = dayItems.slice(0, -1);
+                        waypoints = stops.map(item => getPoint(item.location || { name: item.title }));
+                    } else if (dayItems.length > 2) {
+                        waypoints = dayItems.slice(1, -1).map(item => getPoint(item.location || { name: item.title }));
+                    }
+                    
+                    if (waypoints.length > 0) googleUrl += `&waypoints=${waypoints.join('|')}`;
+                    
+                    setRouteModal({ dayLabel: `Day ${dayId}`, displayDate, stops: dayItems, googleUrl });
+                } catch (err) { console.error("Routing Error", err); }
+            };
+
+            // Drag & Drop
+            const handleCardDrop = (droppedId, targetId) => {
+                const droppedIndex = tripData.ideas.findIndex(i => String(i.id) === String(droppedId));
+                const targetIndex = tripData.ideas.findIndex(i => String(i.id) === String(targetId));
+                if (droppedIndex === -1 || targetIndex === -1) return;
+                const newIdeas = [...tripData.ideas];
+                const droppedItem = newIdeas[droppedIndex];
+                const targetItem = newIdeas[targetIndex];
+                droppedItem.day = targetItem.day;
+                droppedItem.startTime = ''; 
+                newIdeas.splice(droppedIndex, 1);
+                const newTargetIndex = newIdeas.findIndex(i => String(i.id) === String(targetId));
+                newIdeas.splice(newTargetIndex, 0, droppedItem);
+                updateTripData({ ...tripData, ideas: newIdeas });
+            };
+            const handleDayDrop = (e, dayId) => {
+                e.preventDefault();
+                const droppedId = e.dataTransfer.getData("text/plain");
+                const droppedIndex = tripData.ideas.findIndex(i => String(i.id) === String(droppedId));
+                if (droppedIndex === -1) return;
+                const newIdeas = [...tripData.ideas];
+                const item = newIdeas[droppedIndex];
+                if (item.day === dayId) return;
+                item.day = dayId;
+                item.startTime = ''; 
+                newIdeas.splice(droppedIndex, 1);
+                newIdeas.push(item);
+                updateTripData({ ...tripData, ideas: newIdeas });
+            };
+            const handleLogDrop = (e) => {
+                e.preventDefault();
+                const droppedId = e.dataTransfer.getData("text/plain");
+                const droppedIndex = tripData.ideas.findIndex(i => String(i.id) === String(droppedId));
+                if (droppedIndex === -1) return;
+                const newIdeas = [...tripData.ideas];
+                const item = newIdeas[droppedIndex];
+                item.day = null; 
+                item.startTime = '';
+                updateTripData({ ...tripData, ideas: newIdeas });
+            };
+
+            // CSV Functions
+            const generateBackupCSV = () => {
+                const rows = [CSV_HEADERS.join(',')];
+                tripData.ideas.forEach(item => {
+                    const row = [
+                        escapeCSV(item.title), escapeCSV(item.category), escapeCSV(item.status), escapeCSV(item.day || ''),
+                        escapeCSV(item.startTime || ''), escapeCSV(item.duration || ''), escapeCSV(item.notes || ''), escapeCSV(item.link || ''),
+                        escapeCSV(item.location?.name || ''), escapeCSV(item.location?.address || ''), escapeCSV(item.location?.lat || ''), escapeCSV(item.location?.lon || '')
+                    ];
+                    rows.push(row.join(','));
+                });
+                return rows.join('\n');
+            };
+            const handleCopyBackup = () => {
+                navigator.clipboard.writeText(generateBackupCSV());
+                alert("Data copied!");
+            };
+            const handleExportBackup = () => {
+                const csvContent = generateBackupCSV();
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", "trip_backup.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+            const handleImportCSV = () => {
+                if (!csvText) return;
+                const lines = csvText.trim().split(/\r?\n/);
+                if (lines.length < 2) return;
+                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                const newIdeas = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i];
+                    if (!line.trim()) continue;
+                    const values = [];
+                    let match;
+                    const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^",]*))/g;
+                    while ((match = regex.exec(line)) !== null) {
+                        let val = match[1] ? match[1].replace(/""/g, '"') : match[2];
+                        values.push(val);
+                    }
+                    const entry = {};
+                    headers.forEach((header, index) => { if (index < values.length) entry[header] = values[index]; });
+                    
+                    let loc = null;
+                    if(entry.LocationName) {
+                         loc = { name: entry.LocationName, address: entry.LocationAddress, lat: entry.Latitude, lon: entry.Longitude };
+                    }
+                    newIdeas.push({
+                        id: Date.now() + i, title: entry.Title, category: entry.Category, status: entry.Status, day: entry.Day ? parseInt(entry.Day) : null,
+                        startTime: entry.StartTime, duration: entry.Duration, notes: entry.Notes, link: entry.Link, location: loc, order: i
+                    });
+                }
+                updateTripData({ ...tripData, ideas: [...tripData.ideas, ...newIdeas] });
+                setIsImportModalOpen(false);
+            };
+            const exportToGoogleCSV = () => {
+                let csvContent = "Subject,Start Date,Start Time,End Date,End Time,Description,Location\n";
+                let tripStartDate;
+                try {
+                    tripStartDate = parseLocalDate(tripData.startDate);
+                    if (isNaN(tripStartDate.getTime())) throw new Error("Invalid Date");
+                } catch (e) { tripStartDate = new Date(); }
+
+                tripData.ideas.filter(i => i.day).forEach(item => {
+                    const itemDate = new Date(tripStartDate);
+                    itemDate.setDate(tripStartDate.getDate() + (item.day - 1));
+                    const dateStr = itemDate.toLocaleDateString('en-US');
+                    let startTime = item.startTime || "09:00"; 
+                    const [h, m] = startTime.split(':').map(Number);
+                    const startObj = new Date(itemDate);
+                    if (!isNaN(h) && !isNaN(m)) startObj.setHours(h, m);
+                    const durationMins = parseInt(item.duration || 60);
+                    const endObj = new Date(startObj.getTime() + (durationMins * 60000));
+                    const endTime = `${endObj.getHours().toString().padStart(2, '0')}:${endObj.getMinutes().toString().padStart(2, '0')}`;
+                    const locationField = item.location?.address ? `"${item.location.address}"` : `"${item.title}"`;
+                    const row = [`"${item.title}"`, dateStr, startTime, dateStr, endTime, `"${item.notes || ''} - Category: ${item.category}"`, locationField].join(",");
+                    csvContent += row + "\n";
+                });
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", "vacation_itinerary_gcal.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            // --- DEFINED openImportModal ---
+            const openImportModal = () => {
+                setCsvText('');
+                setIsImportModalOpen(true);
+            };
+            
+            // --- DEFINED copyTemplate ---
+            const copyTemplate = () => {
+                navigator.clipboard.writeText(CSV_HEADERS.join(','));
+                alert("Template copied!");
+            };
+            
+            // --- NEW: Mode Toggle Function ---
+            const toggleTransportMode = () => {
+                const newMode = tripData.transportMode === 'driving' ? 'transit' : 'driving';
+                updateTripData({ ...tripData, transportMode: newMode });
+            };
+
+            if (!tripData) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">Loading...</div>;
+
+            // Helper for getting current mode
+            const currentMode = tripData.transportMode || 'transit';
+            const ModeIcon = currentMode === 'driving' ? Car : Train;
+            const ModeIconSmall = currentMode === 'driving' ? Car : Train;
+
+            return (
+                <div className="min-h-screen pb-20 font-sans text-slate-900">
+                    {/* Header */}
+                    <div className="sticky top-0 z-[1000] bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm">
+                        <div className="max-w-4xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+                             <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <input 
+                                        value={tripData.tripName} 
+                                        onChange={(e) => updateTripData({...tripData, tripName: e.target.value})}
+                                        className="bg-transparent text-xl font-bold text-slate-900 placeholder-slate-400 outline-none w-full truncate"
+                                    />
+                                    {saveStatus === 'saving' && <Loader2 size={14} className="animate-spin text-indigo-600" />}
+                                    {saveStatus === 'saved' && <CheckCircle2 size={14} className="text-emerald-600" />}
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-slate-500">
+                                    <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                                        <Calendar size={12} />
+                                        <input type="date" value={tripData.startDate} onChange={(e) => handleDateChange('startDate', e.target.value)} className="bg-transparent outline-none w-24 text-slate-700"/>
+                                    </div>
+                                    <span className="text-slate-400">→</span>
+                                    <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                                        <input type="date" value={tripData.endDate} onChange={(e) => handleDateChange('endDate', e.target.value)} className="bg-transparent outline-none w-24 text-slate-700"/>
+                                    </div>
+                                </div>
+                             </div>
+
+                             <div className="flex items-center gap-2 shrink-0">
+                                {/* Desktop/Tablet Tabs */}
+                                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                                    <button onClick={() => setActiveTab('ideas')} onDrop={handleLogDrop} onDragOver={e=>e.preventDefault()} className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${activeTab==='ideas' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><LayoutGrid size={14}/> <span>Log</span></button>
+                                    <button onClick={() => setActiveTab('itinerary')} onDrop={e=>e.preventDefault()} onDragOver={e=>e.preventDefault()} className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${activeTab==='itinerary' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Calendar size={14}/> <span>Plan</span></button>
+                                    <button onClick={() => setActiveTab('map')} className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${activeTab==='map' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Globe size={14}/> <span>Map</span></button>
+                                </div>
+                                
+                                {/* Desktop Action Buttons */}
+                                <button 
+                                    onClick={toggleTransportMode} 
+                                    className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm font-medium ${currentMode === 'driving' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-orange-50 border-orange-200 text-orange-600'}`} 
+                                    title={currentMode === 'driving' ? 'Switch to Transit' : 'Switch to Driving'}
+                                >
+                                    {currentMode === 'driving' ? <Car size={16} /> : <Train size={16} />}
+                                    <span className="hidden lg:inline">{currentMode === 'driving' ? 'Driving' : 'Transit'}</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => {
+                                        setSearchQuery('');
+                                        setSearchResults([]);
+                                        setIsHotelModalOpen(true);
+                                    }} 
+                                    className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm font-medium ${tripData.accommodation ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`} 
+                                    title="Set Home Base"
+                                >
+                                    <BedDouble size={16} />
+                                    <span>Home Base</span>
+                                </button>
+                                <button 
+                                    onClick={openImportModal} 
+                                    className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 text-sm font-medium" 
+                                    title="Import/Export"
+                                >
+                                    <Upload size={16} />
+                                    <span>Sync Data</span>
+                                </button>
+                             </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-4xl mx-auto px-4 mt-6">
+                        {/* Mobile Actions Grid - IMPROVED */}
+                        <div className="flex flex-col gap-3 md:hidden mb-6">
+                            <button onClick={handleOpenAdd} className="w-full bg-indigo-600 text-white rounded-xl p-3.5 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 active:scale-[0.98]"><Plus size={18}/> Log New Activity</button>
+                            
+                            <div className="grid grid-cols-3 gap-2">
+                                <button 
+                                    onClick={toggleTransportMode}
+                                    className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl border text-xs font-medium transition-all ${currentMode === 'driving' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-orange-50 border-orange-200 text-orange-600'}`}
+                                >
+                                    {currentMode === 'driving' ? <Car size={16} /> : <Train size={16} />}
+                                    <span>{currentMode === 'driving' ? 'Driving' : 'Transit'}</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => setIsHotelModalOpen(true)}
+                                    className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl border text-xs font-medium transition-all ${tripData.accommodation ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-500'}`}
+                                >
+                                    <BedDouble size={16} />
+                                    <span>{tripData.accommodation ? 'Base Set' : 'Set Base'}</span>
+                                </button>
+
+                                <button 
+                                    onClick={openImportModal}
+                                    className="flex flex-col items-center justify-center gap-1 p-2 bg-white border border-slate-200 text-slate-500 rounded-xl text-xs font-medium hover:bg-slate-50"
+                                >
+                                    <Upload size={16} />
+                                    <span>Sync Data</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <button onClick={handleOpenAdd} className="hidden md:flex w-full bg-indigo-600 text-white rounded-xl p-3 mb-6 font-semibold items-center justify-center gap-2 hover:bg-indigo-500 shadow-lg shadow-indigo-900/20 active:scale-[0.98] transition-all"><Plus size={18}/> Log New Activity</button>
+
+                        {/* Views */}
+                        {activeTab === 'ideas' && (
+                            <div onDragOver={e=>e.preventDefault()} onDrop={handleLogDrop} className="min-h-[300px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="flex items-center justify-between mb-4 px-1">
+                                    <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Unscheduled Ideas ({unscheduledItems.length})</h2>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {unscheduledItems.map(item => <IdeaCard key={item.id} item={item} onEdit={handleOpenEdit} onDelete={handleDelete} onDragStart={()=>{}} onDrop={handleCardDrop} />)}
+                                    {unscheduledItems.length === 0 && (
+                                        <div className="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50">
+                                            <LayoutGrid size={32} className="mx-auto mb-3 text-slate-400"/>
+                                            <p className="text-slate-500">Your idea log is empty.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'map' && (
+                            <div className="h-[calc(100vh-180px)] rounded-2xl overflow-hidden shadow-xl border border-slate-200 relative">
+                                <MapView ideas={tripData.ideas} accommodation={tripData.accommodation} />
+                            </div>
+                        )}
+
+                        {activeTab === 'itinerary' && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                {tripDays.map((dateObj, index) => {
+                                    const dayNum = index + 1;
+                                    const displayDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
+                                    const dayItems = tripData.ideas.filter(i => i.day === dayNum);
+                                    
+                                    return (
+                                        <div key={dayNum} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm" onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={e => handleDayDrop(e, dayNum)}>
+                                            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="bg-white w-10 h-10 rounded-lg flex flex-col items-center justify-center border border-slate-200 shadow-sm">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase">{dateObj.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                                                        <span className="text-sm font-bold text-slate-900 leading-none">{dateObj.getDate()}</span>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-bold text-slate-900 text-sm">Day {dayNum}</h3>
+                                                        <p className="text-xs text-slate-500">{displayDate} • {dayItems.length} Activities</p>
+                                                    </div>
+                                                </div>
+                                                {dayItems.length > 0 && <button onClick={(e) => prepareRoutePreview(index, displayDate, e)} className="text-xs bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"><Navigation size={12}/> Route Map</button>}
+                                            </div>
+                                            <div className="p-4 min-h-[100px] relative">
+                                                <div className="absolute left-6 top-4 bottom-4 w-px bg-slate-200"></div>
+                                                
+                                                {/* Hotel Start */}
+                                                {tripData.accommodation && dayItems.length > 0 && (
+                                                    <div className="relative pl-8 mb-6">
+                                                        <div className="absolute left-[21px] top-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></div>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1"><BedDouble size={10}/> Start: {tripData.accommodation.name}</div>
+                                                            <a href={getLegUrl(tripData.accommodation, dayItems[0], currentMode)} target="_blank" className="text-[10px] text-slate-400 hover:text-indigo-600 flex items-center gap-1 transition-colors"><ModeIconSmall size={10}/> Start Day <ChevronRight size={10}/></a>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {dayItems.map((item, idx) => {
+                                                    // Distance calc
+                                                    let distanceKm = 0;
+                                                    let warning = null;
+                                                    if (idx < dayItems.length - 1) {
+                                                        const next = dayItems[idx + 1];
+                                                        if (item.location && next.location) {
+                                                            distanceKm = calculateDistance(item.location.lat, item.location.lon, next.location.lat, next.location.lon);
+                                                            if (distanceKm > 8) warning = "Long Trip";
+                                                        }
+                                                    }
+
+                                                    return (
+                                                        <div key={item.id} className="relative pl-8 mb-4 group last:mb-0">
+                                                            <div className="absolute left-[19px] top-8 w-2.5 h-2.5 rounded-full bg-white border-2 border-indigo-500 z-10"></div>
+                                                            <IdeaCard item={item} compact onEdit={handleOpenEdit} onDelete={handleDelete} onDragStart={()=>{}} onDrop={handleCardDrop} />
+                                                            
+                                                            {idx < dayItems.length - 1 && (
+                                                                <div className="mt-2 mb-4 flex items-center gap-2">
+                                                                    <a href={getLegUrl(item, dayItems[idx+1], currentMode)} target="_blank" className={`text-[10px] border px-2 py-1 rounded-full flex items-center gap-1 transition-colors ${warning ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 shadow-sm'}`}>
+                                                                        {distanceKm < 1.5 && currentMode === 'transit' ? <Footprints size={10}/> : <ModeIconSmall size={10}/>}
+                                                                        {warning ? <span>{warning} ({distanceKm.toFixed(1)}km)</span> : <span>Next Stop {distanceKm > 0 && `(${distanceKm.toFixed(1)}km)`}</span>}
+                                                                        <ChevronRight size={10}/>
+                                                                    </a>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+
+                                                 {/* Hotel Return */}
+                                                 {tripData.accommodation && dayItems.length > 0 && (
+                                                    <div className="relative pl-8 mt-6 opacity-50 hover:opacity-100 transition-opacity">
+                                                        <div className="absolute left-[21px] top-1.5 w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                                        <div className="flex items-center gap-3">
+                                                            <a href={getLegUrl(dayItems[dayItems.length-1], tripData.accommodation, currentMode)} target="_blank" className="text-[10px] font-medium text-slate-400 hover:text-indigo-600 flex items-center gap-1 border border-slate-200 bg-white rounded-full px-2 py-0.5 shadow-sm"><ModeIconSmall size={10}/> Return Base <ChevronRight size={10}/></a>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {dayItems.length === 0 && (
+                                                    <div className="text-center py-8">
+                                                        <p className="text-slate-400 text-xs italic">Drag activities here to plan this day.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* --- HOTEL MODAL --- */}
+                    {isHotelModalOpen && (
+                        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center sm:p-4">
+                            <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setIsHotelModalOpen(false)} />
+                            <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in slide-in-from-bottom-10 duration-200">
+                                <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                    <h3 className="font-bold text-slate-900 flex items-center gap-2"><BedDouble size={18} className="text-indigo-600"/> Home Base</h3>
+                                    <button onClick={() => setIsHotelModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full transition-colors"><X size={20}/></button>
+                                </div>
+                                <div className="p-5 overflow-y-auto">
+                                    {tripData.accommodation && (
+                                        <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
+                                            <div>
+                                                <div className="text-xs text-indigo-600 font-bold uppercase">Current</div>
+                                                <div className="text-sm font-bold text-slate-900 truncate">{tripData.accommodation.name}</div>
+                                            </div>
+                                            <button onClick={() => {updateTripData({...tripData, accommodation:null}); setIsHotelModalOpen(false);}} className="text-red-500 hover:bg-red-50 p-2 rounded-lg text-xs flex items-center gap-1 transition-colors"><Trash2 size={14}/> Remove</button>
+                                        </div>
+                                    )}
+                                    <div className="relative">
+                                        <input 
+                                            autoFocus
+                                            placeholder="Search hotel or address..." 
+                                            className="w-full p-3 pr-10 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-slate-900 placeholder-slate-400 shadow-sm"
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && handleSearchLocation()}
+                                        />
+                                        <button onClick={handleSearchLocation} className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-indigo-600 transition-colors">{isSearching ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}</button>
+                                    </div>
+                                    <div className="mt-3 space-y-1">
+                                        {searchResults.map((res, i) => (
+                                            <button key={i} onClick={() => selectLocation(res)} className="w-full text-left p-3 hover:bg-slate-50 rounded-lg text-sm border-b border-slate-100 last:border-0 flex gap-3 transition-colors">
+                                                <MapPin size={16} className="mt-0.5 text-indigo-500 shrink-0"/>
+                                                <div>
+                                                    <div className="font-bold text-slate-200">{res.name || res.display_name.split(',')[0]}</div>
+                                                    <div className="text-xs text-slate-500 line-clamp-1">{res.display_name}</div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- EDIT MODAL --- */}
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center sm:p-4">
+                            <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+                            <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-10 duration-200">
+                                <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                    <h3 className="font-bold text-slate-900">{editingId ? 'Edit Activity' : 'New Activity'}</h3>
+                                    <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full transition-colors"><X size={20}/></button>
+                                </div>
+                                <div className="p-5 space-y-4 overflow-y-auto">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Title</label>
+                                        <input autoFocus={!editingId} value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none shadow-sm" placeholder="e.g. Louvre Museum"/>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Location (Search)</label>
+                                        <div className="relative">
+                                            <input 
+                                                value={searchQuery} 
+                                                onChange={e => setSearchQuery(e.target.value)} 
+                                                onKeyDown={e => e.key === 'Enter' && handleSearchLocation()}
+                                                className="w-full bg-white border border-slate-200 rounded-lg p-3 pr-10 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder-slate-400 shadow-sm" 
+                                                placeholder="Search real address..."
+                                            />
+                                            <button onClick={handleSearchLocation} className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-indigo-600 transition-colors">{isSearching ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}</button>
+                                        </div>
+                                        {searchResults.length > 0 && (
+                                            <div className="mt-2 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-lg">
+                                                {searchResults.map((res, i) => (
+                                                    <button key={i} onClick={() => selectLocation(res)} className="w-full text-left p-2 hover:bg-slate-50 text-sm border-b border-slate-100 text-slate-700 truncate transition-colors">{res.display_name}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {formData.location && (
+                                            <div className="mt-2 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg">
+                                                <MapPin size={14}/>
+                                                <div className="truncate flex-1">{formData.location.name}</div>
+                                                <button onClick={() => setFormData({...formData, location: null})}><X size={14} className="text-emerald-400 hover:text-red-500 transition-colors"/></button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Category</label>
+                                            <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 outline-none focus:border-indigo-500 shadow-sm">
+                                                {CATEGORIES.map(c => <option key={c.label} value={c.label}>{c.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Priority</label>
+                                            <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 outline-none focus:border-indigo-500 shadow-sm">
+                                                <option value="must-do">Must Do</option>
+                                                <option value="nice-to-have">If Time</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Time</label>
+                                            <input type="time" value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 outline-none focus:border-indigo-500 shadow-sm"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Duration (m)</label>
+                                            <input type="number" step="15" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 outline-none focus:border-indigo-500 shadow-sm"/>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Notes</label>
+                                        <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-900 h-20 resize-none outline-none focus:border-indigo-500 shadow-sm" placeholder="Entry cost, details..."/>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Link</label>
+                                        <input type="url" value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-900 outline-none focus:border-indigo-500 shadow-sm" placeholder="https://..."/>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-slate-50 border-t border-slate-200">
+                                    <button onClick={handleSaveItem} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]">{editingId ? 'Save Changes' : 'Add Activity'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* --- ROUTE PREVIEW MODAL --- */}
+                    {routeModal && (
+                         <div className="fixed inset-0 z-[2000] flex items-center justify-center sm:p-4">
+                            <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setRouteModal(null)} />
+                            <div className="relative w-full sm:max-w-md bg-white border border-slate-200 rounded-xl shadow-2xl p-6 animate-in zoom-in-95">
+                                <h3 className="text-lg font-bold text-slate-900 mb-2">Route Preview</h3>
+                                <p className="text-slate-500 text-sm mb-4">
+                                    {routeModal.stops.length} stops • {routeModal.displayDate}
+                                </p>
+                                
+                                <div className="space-y-2 mb-6">
+                                    {routeModal.stops.map((s, i) => (
+                                        <div key={s.id} className="flex items-center gap-3 text-sm text-slate-600">
+                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold border border-slate-200 text-slate-500">{i+1}</div>
+                                            <span className="truncate">{s.title}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <a href={routeModal.googleUrl} target="_blank" className="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-bold py-3 rounded-xl mb-3 shadow-md transition-colors">Open Google Maps</a>
+                                <button onClick={() => setRouteModal(null)} className="block w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-medium py-3 rounded-xl transition-colors">Close</button>
+                            </div>
+                         </div>
+                    )}
+
+                    {/* --- IMPORT/EXPORT MODAL --- */}
+                    {isImportModalOpen && (
+                        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center sm:p-4">
+                            <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setIsImportModalOpen(false)} />
+                            <div className="relative w-full sm:max-w-xl bg-white rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh] animate-in slide-in-from-bottom-10 duration-200">
+                                <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                    <h3 className="font-bold text-slate-900">Manage Data</h3>
+                                    <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-full transition-colors"><X size={20}/></button>
+                                </div>
+                                
+                                <div className="p-5 flex-1 overflow-y-auto space-y-6">
+                                    
+                                    {/* EXPORT SECTION */}
+                                    <div>
+                                        <h4 className="font-semibold text-slate-900 mb-2 flex items-center gap-2"><Download size={16} /> Export Data</h4>
+                                        <p className="text-sm text-slate-500 mb-3">Download your itinerary to backup or edit in Excel.</p>
+                                        <div className="flex gap-2">
+                                            <button onClick={handleCopyBackup} className="text-sm bg-indigo-50 border border-indigo-200 text-indigo-700 px-4 py-2 rounded-lg hover:bg-indigo-100 font-medium flex-1 flex items-center justify-center gap-2 transition-colors"><ClipboardCopy size={16}/> Copy</button>
+                                            <button onClick={handleExportBackup} className="text-sm bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 font-medium flex-1 transition-colors">Backup CSV</button>
+                                            <button onClick={exportToGoogleCSV} className="text-sm bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 font-medium flex-1 transition-colors">G-Cal CSV</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t border-slate-100 pt-4">
+                                        <h4 className="font-semibold text-slate-900 mb-2 flex items-center gap-2"><Upload size={16} /> Bulk Import</h4>
+                                        <p className="text-sm text-slate-500 mb-3">Paste CSV data below.</p>
+                                        
+                                        <button onClick={copyTemplate} className="text-xs text-indigo-600 flex items-center gap-1 hover:text-indigo-700 hover:underline mb-2"><Copy size={12}/> Copy CSV Template</button>
+
+                                        <textarea className="w-full h-40 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:border-indigo-500 outline-none text-slate-700" placeholder="Paste CSV here..." value={csvText} onChange={e => setCsvText(e.target.value)} />
+                                        <button onClick={handleImportCSV} disabled={!csvText} className="w-full mt-3 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md">Import</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TripPlanner />);
+    </script>
+</body>
+</html>
